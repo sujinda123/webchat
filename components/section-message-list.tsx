@@ -43,7 +43,7 @@ export default function SectionMessageList({ room_id }: { room_id: string }) {
     if (!room_id) return;
 
     const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL, {
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],
       withCredentials: true,
     });
 
