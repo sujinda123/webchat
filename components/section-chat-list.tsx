@@ -37,7 +37,15 @@ export default function SectionChatList() {
 
   useEffect(() => {
     const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL, {
-      transports: ["websocket"],
+      transports: ["websocket"], // force WS only
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 20000,
+      randomizationFactor: 0.5,
+      reconnectionAttempts: Infinity,
+      timeout: 10000,
+      upgrade: false,
+      withCredentials: true,
     });
 
     socket.on("connect", () => {

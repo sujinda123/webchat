@@ -8,13 +8,15 @@ dotenv.config();
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
 const httpServer = createServer();
-const io = new Server(server, {
+
+const io = new Server(httpServer, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
+
 
 // Config Redis Subscriber
 // const pubClient = new Redis(REDIS_URL);
