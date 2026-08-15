@@ -1,4 +1,4 @@
-import { redis } from "@/lib/redis";
+import { redis, redisPub } from "@/lib/redis";
 import { getLineProfile } from "@/services/profile/profile.service";
 
 export async function POST(request: Request) {
@@ -21,36 +21,36 @@ export async function POST(request: Request) {
           const profile = await getLineProfile(userId);
 
           await redis.hset(`line:user:${userId}`, {
-            lastReplyToken: replyToken,
             name: profile?.displayName || "",
             avatar: profile?.pictureUrl || "",
           });
         }
 
-        const messageData = JSON.stringify({
+        await redis.hset(`line:user:${userId}`, {
+          lastReplyToken: replyToken,
+          lastActiveTime: timestamp,
+        });
+
+        const messageObj = {
           message_id: messageId,
           text,
           timestamp,
           replyToken,
-          is_self: false,
-        });
+          is_self: false, // False = Customer
+        };
 
+        const messageData = JSON.stringify(messageObj);
+
+        // Save message to Redis list
         await redis.rpush(`line:chat:${userId}`, messageData);
 
-        console.log(`Saved message from ${userId}: ${text}`);
+        // psubscribe
+        await redisPub.publish(`line:chat:${userId}`, messageData);
+
+        console.log(`Saved & Published message from ${userId}: ${text}`);
       }
     }
   }
-
-  // const webhook = await redis.get("lineoa:webhook");
-
-  // if (webhook) {
-  //   console.log("from redis:", JSON.stringify(JSON.parse(webhook)));
-  //   return Response.json({ message: "POST request received" });
-  // }
-
-  // await redis.set("lineoa:webhook", JSON.stringify(body), "EX", 60);
-  // console.dir(body, { depth: null });
 
   return Response.json({ message: "POST request received" });
 }

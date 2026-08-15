@@ -1,8 +1,9 @@
-import React, { useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
+import { io } from "socket.io-client";
 
 async function fetchConversation(room_id: string) {
   const res = await fetch(`/api/chats/${room_id}`);
@@ -11,9 +12,9 @@ async function fetchConversation(room_id: string) {
 }
 
 export interface Conversation {
-  message_id: string;
+  message_id?: string;
   text: string;
-  timestamp: Date;
+  timestamp: Date | string | number;
   is_self: boolean;
 }
 
@@ -28,22 +29,57 @@ interface Data {
 }
 
 export default function SectionMessageList({ room_id }: { room_id: string }) {
-  const { data: data, isLoading } = useQuery<Data>({
+  // Query
+  const { data, isLoading } = useQuery<Data>({
     queryKey: ["conversation", room_id],
     queryFn: () => fetchConversation(room_id),
   });
 
+  // Socket
+  const [realtimeMessages, setRealtimeMessages] = useState<Conversation[]>([]);
+
+  // Socket Connection
+  useEffect(() => {
+    if (!room_id) return;
+
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL, {
+      transports: ["websocket"],
+    });
+
+    // Wait Join Room
+    socket.on("connect", () => {
+      console.log("Socket connected, joining room:", room_id);
+      socket.emit("join-room", room_id);
+    });
+
+    socket.on("receive-message", (newMessage: Conversation) => {
+      setRealtimeMessages((prev) => [...prev, newMessage]);
+    });
+
+    return () => {
+      socket.emit("leave-room", room_id);
+      socket.off("connect");
+      socket.off("receive-message");
+      socket.disconnect();
+    };
+  }, [room_id]);
+
+  // All Messages
+  const allMessages = useMemo(() => {
+    const initialMessages = data?.messages || [];
+    return [...initialMessages, ...realtimeMessages];
+  }, [data?.messages, realtimeMessages]);
+
+  // Sort Messages
   const sortedMessages = useMemo(() => {
-    if (!data?.messages) return undefined;
-    return [...data.messages].sort(
+    return [...allMessages].sort(
       (a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
-  }, [data]);
+  }, [allMessages]);
 
   if (isLoading) return null;
-
-  if (!sortedMessages) return null;
+  if (!sortedMessages.length) return null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -69,7 +105,9 @@ export default function SectionMessageList({ room_id }: { room_id: string }) {
             ) : (
               <Avatar className="mr-2">
                 <Image
-                  src={data?.profile?.avatar || "https://github.com/evilrabbit.png"}
+                  src={
+                    data?.profile?.avatar || "https://github.com/evilrabbit.png"
+                  }
                   alt={data?.profile?.name || ""}
                   width={40}
                   height={40}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { redis } from "@/lib/redis";
+import { redis, redisPub } from "@/lib/redis";
 import { pushMessageToUser } from "@/services/push/push.service";
 
 export async function GET() {
@@ -15,14 +15,14 @@ export async function GET() {
       return {
         userId: key.replace("line:user:", ""),
         lastMessage: data.lastMessage || "-",
-        lastActive: data.lastActive ? Number(data.lastActive) : Date.now(),
+        lastActiveTime: data.lastActiveTime
+          ? Number(data.lastActiveTime)
+          : Date.now(),
         name: data.name || "-",
         avatar: data.avatar || "",
       };
     }),
   );
-
-  data.sort((a, b) => b.lastActive - a.lastActive);
 
   return NextResponse.json({ data });
 }
@@ -33,10 +33,30 @@ export async function POST(req: NextRequest) {
 
     redis.lpush(
       `line:chat:${user}`,
-      JSON.stringify({ user, text: message, timestamp: Date.now(), is_self: true }),
+      JSON.stringify({
+        user,
+        text: message,
+        timestamp: Date.now(),
+        is_self: true,
+      }),
     );
 
     await pushMessageToUser(user, message);
+    // Publish to Redis
+    redisPub.publish(
+      `line:chat:${user}`,
+      JSON.stringify({
+        user,
+        text: message,
+        timestamp: Date.now(),
+        is_self: true,
+      }),
+    );
+
+    await redis.hset(`line:user:${user}`, {
+      lastActiveTime: Date.now(),
+    });
+
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (error) {
     console.error("Send message error:", error);
